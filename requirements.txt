@@ -1,0 +1,5 @@
+gymnasium==0.28.1
+matplotlib==3.8.0
+networkx==3.1
+pandas==2.1.4
+git+https://github.com/yuce/pyswip@master#egg=pyswip
