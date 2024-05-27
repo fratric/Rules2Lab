@@ -1,112 +1,185 @@
 #import gymnasium as gym
-import random
 from env_input.ConstraintsHandler import PrologHandler
 
+import random
 import pandas as pd
+import gymnasium as gym
+from  gymnasium import spaces
+from gymnasium.spaces import Dict
+import string
+import numpy as np
 
-#class Cooking(gym.Env):
-class DataSharing():
+class DataSharing(gym.Env):
+#class DataSharing():
     name = "Data sharing environmnet"
     rewardPenalty = -100
 
     def __init__(self, env_config) -> None:
         self.pathToRules = env_config['pathToRules']
         self.pathToInitialState = env_config['pathToInitialState']
-        #self.handler = PrologHandler(self.name, self.pathToRules, self.pathToInitialState)
-
+        self.spaceType = env_config['spaceType']
+        self.agentRL = env_config['agentRL']
         
+        self.tau = 0.8
+
+        if self.spaceType == 'encoded':
+            self.handler = PrologHandler(self.name, self.pathToRules, self.pathToInitialState)
+            self.allActions = self.handler.getAllActions()
+            if self.agentRL is not None: #later check if agent a valid agent
+                tmp = []
+                for action in self.allActions:
+                    if action["X0"] == self.agentRL:
+                        tmp.append(action)
+                self.allActions = tmp.copy()
+            self.action_space = spaces.Discrete(len(self.allActions))
+            self.allObservations = self.handler.getAllObservations()
+            self.allObservations = [obs for obs in self.allObservations if not (obs['observable'] == 'hasAccess' and obs['X0'] != 'insurenceCompany')]
+            self.observation_space_size = len(self.allObservations)
+            self.observation_space = spaces.Dict(
+                {
+                    "action_mask": spaces.MultiBinary(self.action_space.n),
+                    "observations": spaces.MultiBinary(self.observation_space_size),
+                }
+            )
+        elif self.spaceType == 'symbolic':
+            self.action_space = spaces.Text(min_length = 1, max_length = 5000, charset = string.printable)
+            self.observation_space = spaces.Text(min_length = 1, max_length = 5000, charset = string.printable)
+        else:
+            print("warning: unknown space type")
+            self.action_space = None
+            self.observation_space = None
+
     
-    def reset(self, init_facts = None):
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        self.nStep = 0
         self.handler = PrologHandler(self.name, self.pathToRules, self.pathToInitialState)
-        if init_facts is not None:
-            for fact in init_facts:
+        if options is not None:
+            for fact in options:
                 self.handler.safeAddFact(fact)
 
-        state = self.handler.getState()
-        observation = self._get_obs(state)
-        info = self._get_info(state)
+        dictObservation = self.handler.getObservation()
+        observation = self._get_obs(dictObservation)
+        info = self._get_info(dictObservation)
         return observation, info
     
-    def step(self, action):
-        
-        action_name = action['action'] #string
-        if action == "nullAction":
-            pass
-        elif action_name == 'gainAccess':
-            user = action['X0']
-            data = action['X1']
-            self.handler.addFact("hasAccess(" + user + "," + data + ")")
-            reward = self.getReward(action)
-        elif action_name == 'merge':
-            user = action['X0']
-            data = action['X1']
-            model = action['X2']
-            #resuts in a creation of a new columm in dataA
-        else:
-            print("Warning: no action executed")
-        
-        reward = self.getReward(action)
+    def step_uni(self, action):
+        if not isinstance(action, dict):
+            action = self.allActions[action]
 
-        state = self.handler.getState()
-        info = self._get_info(state)
-        observation = self._get_obs(state)        
-        terminated = self._is_done()
+        
+
+        formated_action = self.handler.print(action)[0]
+
+        res = self.handler.makeQuery('transition(' + formated_action + ',T, R)')
+        if len(res) > 1:
+            print("Warning: more than one transition mapping for", formated_action)
+        state_facts = res[0]['T']
+
+        for state_fact in state_facts:
+            if state_fact[0] == '+':
+                self.handler.addFact(state_fact[1:])
+            elif state_fact[0] == '-':
+                self.handler.removeFact(state_fact[1:])
+            else:
+                print("Warning: only add (+) or remove (-) operators are valid")
+
+        reward = res[0]['R']
+
+        self.nStep = self.nStep + 1
+
+        dictObservation = self.handler.getObservation()
+        observation = self._get_obs(dictObservation) 
+        info = self._get_info(dictObservation, action)       
+        terminated = self._is_done(user)
         truncated = self._truncate()
         return observation, reward, terminated, truncated, info
 
 
-    
-    def _is_done(self):
+
+
+    def step(self, action):
+        
+        if not isinstance(action, dict):
+            action = self.allActions[action]
+
+        reward = 0
+        action_name = action['action']
+        user = action['X0']
+
+        if action_name == "nullAction":
+            reward = 0
+        elif action_name == 'gainAccess':
+            data = action['X1']
+            self.handler.addFact("hasAccess(" + user + "," + data + ")")
+
+            reward = 10
+        elif action_name == 'infer': #results in creatinon of a new data-instance
+            data = action['X1']
+            model = action['X2']
+            self.handler.addFact("performedInference(" + user + "," + data + "," + model+ ")")
+            reward = 500
+        else:
+            print("Warning: unknown action ", action_name)
+        
+        self.nStep = self.nStep + 1
+
+        dictObservation = self.handler.getObservation()
+        observation = self._get_obs(dictObservation) 
+        info = self._get_info(dictObservation, action)       
+        terminated = self._is_done(user)
+        truncated = self._truncate()
+        return observation, reward, terminated, truncated, info
+
+
+    def _is_done(self, user):
         isBreach = False
-        for sol in self.handler.makeQuery('solution(insurenceCompany,X1,X2)'):
+
+        for sol in self.handler.makeQuery('solution(' + user +',X1,X2)'):
             isBreach = True
+        
+        #running 
+        #for sol in self.handler.makeQuery("verifyPrivacy(X, Y, A, B)"):
+        #    officer = sol["X"]
+        #    user = sol["Y"]
+        #    data_private = sol["A"]
+        #    data = sol["B"]
+        #    if self.database.compare(data_private, data) > self.tau:
+        #        isBreach = True
+        #        break
         return isBreach
     
     def _truncate(self):
         if len(self.handler.getAllowedActions()) == 0:
             return True
+        if self.nStep > 50:
+            return True
         return False
 
     def _get_obs(self, state):
-        return state
-    
-    def _get_info(self, state):
-        return {
-            "prologState": self.handler.print(state),
-            "state": state
-        }
-    
-    def getReward(self, action):
-        reward = 0
-        action_name = action['action']
-        if action_name == 'gainAccess':
-            user = action['X0']
-            data = action['X1']
-            sol = self.handler.makeQuery("cost(" + data + ",X" + ")")
-            if len(sol) == 0:
-                print("Error: no dataCost found for ", data)
-            if len(sol) > 1:
-                print("Warning: multiple dataCost found for ", data)
-            reward = -1*sol[0]["X"]
-        elif action_name == 'merge':
-            user = action['X0']
-            dataA = action['X1']
-            dataB = action['X2']
-            #for now now cost on merge action
-            reward = 0.0
-            #sol = self.handler.makeQuery("dataCost(" + dataC + ",X" + ")")
-            #if len(sol) == 0:
-            #    print("Error: no dataCost found for ", dataC)
-            #if len(sol) > 1:
-            #    print("Warning: multiple dataCost found for ", dataC)
-            #reward = sol[0]["X"]
+        if self.spaceType == 'encoded':
+            return {
+                'action_mask': self.maskArray(),
+                'observations': self.encodeObservation(state)
+                }
+        elif self.spaceType == 'symbolic':
+            return self.handler.print(state)
         else:
-            reward = self.rewardPenalty
-            print("Warning: no action executed")
-        return reward
+            print("Warning: unknown spaceType")
+    
+    def _get_info(self, observation, action = None):
+        state = self.handler.getState()
+        tmp_dict = {"dictObservation": observation, "dictState": state, "formatState": self.handler.print(state)}
+        if action is not None:
+            tmp_dict["formatAction"] = self.handler.print(action)
+        if action is not None and isinstance(action, int):
+            tmp_dict["dictAction"] = action
+        if self.spaceType == 'encoded':
+            tmp_dict["formatObesrvation"] = self.handler.print(observation)
+        return tmp_dict
 
 
-    def randomAllowedAction(self, agent = None):
+    def randomAllowedAction(self, agent = None): #adjust also for encoded space type
         allowedActs = self.handler.getAllowedActions()
         if agent is not None:
             tmp = []
@@ -118,36 +191,6 @@ class DataSharing():
             randAct = random.choice(allowedActs)
             return randAct
         return {'action': "NullAction"}
-    
-
-    def getAllObservations(self):
-        #predicates = ['isChildOf', 'based', 'taxResidence', 'rentsIP']
-        predicates = self.handler.atomicStateFacts
-
-        observationList = []
-        for fact in predicates:
-            query_string = "sc_" + fact + '(X0,X1)'
-            res = self.handler.makeQuery(query_string)
-            for sol in res:
-                sol['fact'] = fact
-            observationList = observationList + res
-        return observationList
-    
-    def getAllActions(self):
-        #actions = ['addChild', 'rentIP']
-        actions = self.handler.atomicActions
-
-        actionList = []
-        for action in actions:
-            if action == 'inferData':
-                query_string = "sc_" + action + '(X0,X1,X2,X3)'
-            else: #action == 'gainDataAccess' or action == 'gainModelAccess' or action == 'reconstructionAttack':
-                query_string = "sc_" + action + '(X0,X1)'
-            res = self.handler.makeQuery(query_string)
-            for sol in res:
-                sol['action'] = action
-            actionList = actionList + res
-        return actionList
     
     def getStateAsTriplets(self, state):
         head = []
@@ -162,71 +205,83 @@ class DataSharing():
                 relation.append(fact['fact'])
                 tail.append(fact['X1'])
         return pd.DataFrame({'head': head, 'relation': relation, 'tail': tail})
+
+    def encodeObservation(self, state):
+        array = np.zeros(self.observation_space_size, dtype=np.int8)
+        for i, fact in enumerate(self.allObservations):
+            if fact in state:
+                array[i] = 1
+        return array
+    
+    def maskArray(self):
+        allowed = self.handler.getAllowedActions()
+        mask_array = np.zeros(self.action_space.n, dtype=np.int8)
+        for i, action in enumerate(self.allActions):
+            if action in allowed:
+                mask_array[i] = 1
+        return mask_array
     
 
-# data(govData). %goverment
-# data(healthRiskData). %hospital
-# data(auditData). %consultancy
-# data(electionData). %goverment
-# data(geriatryData).
-# data(countryHealthData).
-# data(surnameMapData).
-# data(ageMapData).
+from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
+from ray.rllib.models.tf.tf_modelv2 import TFModelV2
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFC
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.torch_utils import FLOAT_MIN
 
-# model(healthRiskModel). %hospital
-# model(countryHealthModel).
-# model(ageMapModel).
-# model(surnameMapModel).
+tf1, tf, tfv = try_import_tf()
+torch, nn = try_import_torch()
 
+class ActionMaskModel(TFModelV2):
+    """Model that handles simple discrete action masking.
 
-class Data:
-    def __init__(self):
-        
-        self.govData = pd.DataFrame(columns = ['varName', 'varAge'])
+    This assumes the outputs are logits for a single Categorical action dist.
+    Getting this to work with a more complex output (e.g., if the action space
+    is a tuple of several distributions) is also possible but left as an
+    exercise to the reader.
+    """
 
-        healthRiskDict = {'varName': ['Jack', 'Amanda', 'Bob', 'Alice', 'Jeff'], 
-                          'varAge': [84, 27, 33, 48, 56],
-                          'varHealth': [1,0,0,1,1] #1 = risk, 0 = no risk
-                          }
-        self.healthRiskData = pd.DataFrame(healthRiskDict, columns = ['varName', 'varAge', 'varHealth'])
-        self.auditData = pd.DataFrame()
-        self.electionData = pd.DataFrame(columns = ['varAge'])
-        self.geriatryData = pd.DataFrame(columns = ['varAge', 'varHealth'])
-        self.countryHealthData = pd.DataFrame(columns = ['varHealth'])
-        self.surnameMapData = pd.DataFrame(columns = ['varName'])
-        self.ageMapData = pd.DataFrame(columns = ['ageMapData'])
+    def __init__(
+        self, obs_space, action_space, num_outputs, model_config, name, **kwargs
+    ):
 
+        orig_space = getattr(obs_space, "original_space", obs_space)
+        assert (
+            isinstance(orig_space, Dict)
+            and "action_mask" in orig_space.spaces
+            and "observations" in orig_space.spaces
+        )
 
-from sklearn.linear_model import LogisticRegression
+        super().__init__(obs_space, action_space, num_outputs, model_config, name)
 
-class Models:
+        self.internal_model = FullyConnectedNetwork(
+            orig_space["observations"],
+            action_space,
+            num_outputs,
+            model_config,
+            name + "_internal",
+        )
 
-    class Model:
-        def __init__(self, inputVars, outputVars, model):
-            self.inputVars = inputVars
-            self.outputVars = outputVars
-            self.allVars = inputVars + outputVars
-            self.model = model
+        # disable action masking --> will likely lead to invalid actions
+        self.no_masking = model_config["custom_model_config"].get("no_masking", False)
 
-    def __init__(self):
-        self.healthRiskModel = self.Model(inputVars=['varAge'], outputVars=['varHealth'], model = LogisticRegression())
+    def forward(self, input_dict, state, seq_lens):
+        # Extract the available actions tensor from the observation.
+        action_mask = input_dict["obs"]["action_mask"]
 
+        # Compute the unmasked logits.
+        logits, _ = self.internal_model({"obs": input_dict["obs"]["observations"]})
 
-# varName(govData).
-# varName(healthRiskData).
-# varName(surnameMapData).
-# varName(surnameMapModel).
+        # If action masking is disabled, directly return unmasked logits
+        if self.no_masking:
+            return logits, state
 
-# varAge(govData).
-# varAge(healthRiskData).
-# varAge(electionData).
-# varAge(geriatryData).
-# varAge(healthRiskModel).
-# varAge(ageMapData).
-# varAge(ageMapModel).
+        # Convert action_mask into a [0.0 || -inf]-type mask.
+        inf_mask = tf.maximum(tf.math.log(action_mask), tf.float32.min)
+        masked_logits = logits + inf_mask
 
-# varHealth(healthRiskData).
-# varHealth(geriatryData).
-# varHealth(healthRiskModel).
-# varHealth(countryHealthData).
-# varHealth(countryHealthModel).
+        # Return masked logits.
+        return masked_logits, state
+
+    def value_function(self):
+        return self.internal_model.value_function()

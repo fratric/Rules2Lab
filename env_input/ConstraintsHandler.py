@@ -4,9 +4,6 @@ from abc import ABC, abstractmethod
 
 class ConstraintsHandler(ABC):
 
-    atomicStateFacts = {}
-    atomicActions = {}
-
     def __init__ (self, env_name, pathToFile, pathToInitialState):
         self.env_name =  'ConstraintsHandler_' + env_name
         self.pathToFile = pathToFile
@@ -43,15 +40,18 @@ class PrologHandler(ConstraintsHandler):
         self.loadInitialState(pathToInitialState)
 
         
-        self.atomicActions = {}
-        for soln in self.prolog.query('isAction(X1,X2)'):
-            self.atomicActions[soln['X1']] = int(soln['X2'])
-        self.atomicStateFacts = {}
-        for soln in self.prolog.query('isObservable(X1,X2)'):
-            self.atomicStateFacts[soln['X1']] = int(soln['X2'])
+        self.atomicActions = self.getAtomicActions()
+        self.atomicStates = self.getAtomicStates()
+        self.atomicObservables = self.getAtomicObservables()
+        self.agents = self.getAgents()
 
         #print(self.atomicActions)
-        #print(self.atomicStateFacts)
+        #print(self.atomicObservables)
+
+    #this method checks if all atomic actions in the environment exist in the file. Note that prolog alone cannot know what is action and what is fact
+    def verifyElementaryActions(self):
+        #load atomic action in the prolog file and then when doing step you can check the imput action (action_name) against loaded list of actions
+        pass
 
     def loadRules(self, pathToFile):
         if isinstance(pathToFile, str):
@@ -106,6 +106,11 @@ class PrologHandler(ConstraintsHandler):
             action_name = tmp_action['action'] #string
             tmp_action.pop('action') #dict
             tmpstr = self.formatPredicate(action_name, tmp_action)
+        elif 'observable' in input.keys():
+            tmp_fact = input.copy()
+            fact_name = tmp_fact['observable'] #string
+            tmp_fact.pop('observable') #dict
+            tmpstr = self.formatPredicate(fact_name, tmp_fact)
         elif 'fact' in input.keys():
             tmp_fact = input.copy()
             fact_name = tmp_fact['fact'] #string
@@ -125,7 +130,69 @@ class PrologHandler(ConstraintsHandler):
         else:
             print("Warning: unknown <input> type in ConstraintHandler.print(<input>)")
         return output_list
+    
+    def getAtomicActions(self):
+        atomicActions = {}
+        for soln in self.prolog.query('isAction(X1,X2)'):
+            atomicActions[soln['X1']] = int(soln['X2'])
+        return atomicActions
+    
+    def getAtomicObservables(self):
+        atomicObservables = {}
+        for soln in self.prolog.query('isObservable(X1,X2)'):
+            atomicObservables[soln['X1']] = int(soln['X2'])
+        return atomicObservables
 
+    def getAtomicStates(self):
+        atomicStates = {}
+        for soln in self.prolog.query('isStateVar(X1,X2)'):
+            atomicStates[soln['X1']] = int(soln['X2'])
+        return atomicStates
+    
+    def getAgents(self, agent_type = None):
+        agents = []
+        if agent_type is None:
+            for soln in self.prolog.query('agent(X1)'):
+                agents.append(soln['X1'])
+        elif isinstance(agent_type, str):
+            for soln in self.prolog.query(agent_type + '(X1)'):
+                agents.append(soln['X1'])
+                #print("Warning: unknown agent type")
+        else:
+            print("Warning: agent_type is not of type string")
+        return agents
+        
+
+    def getState(self):
+        state_facts = []
+        for fact in self.atomicStates:
+            #print("atomic action: ", action)
+            query_string = fact + '('
+            for x in range(self.atomicStates[fact]):
+                query_string = query_string + 'X' + str(x) + ','
+            query_string = query_string[:-1]
+            query_string = query_string + ')'
+            for soln in self.prolog.query(query_string):
+                #print(soln)
+                soln['fact'] = fact #add name of fact to its arguemnts
+                state_facts.append(soln)
+        return state_facts
+
+    def getObservation(self):
+        state_facts = []
+        for fact in self.atomicObservables:
+            #print("atomic action: ", action)
+            query_string = fact + '('
+            for x in range(self.atomicObservables[fact]):
+                query_string = query_string + 'X' + str(x) + ','
+            query_string = query_string[:-1]
+            query_string = query_string + ')'
+            for soln in self.prolog.query(query_string):
+                #print(soln)
+                soln['observable'] = fact #add name of fact to its arguemnts
+                state_facts.append(soln)
+        return state_facts
+    
     def getAllowedActions(self):
         allowedActions = []
         for action in self.atomicActions:
@@ -140,27 +207,36 @@ class PrologHandler(ConstraintsHandler):
                 soln['action'] = action #add name of allowed action to its arguemnts
                 allowedActions.append(soln)
         return allowedActions
-
-    #this method checks if all atomic actions in the environment exist in the file. Note that prolog alone cannot know what is action and what is fact
-    def verifyElementaryActions(self):
-        #load atomic action in the prolog file and then when doing step you can check the imput action (action_name) against loaded list of actions
-        pass
-
-    #retunrs all facts from the prolog database
-    def getState(self):
-        state_facts = []
-        for fact in self.atomicStateFacts:
+    
+    def getAllActions(self, agent = None): #finish this from the CodeReCivil test and then do RL
+        allActions = []
+        for action, arity in self.atomicActions.items():
             #print("atomic action: ", action)
-            query_string = fact + '('
-            for x in range(self.atomicStateFacts[fact]):
+            query_string = 'static_' + action + '('
+            for x in range(arity):
                 query_string = query_string + 'X' + str(x) + ','
             query_string = query_string[:-1]
             query_string = query_string + ')'
             for soln in self.prolog.query(query_string):
                 #print(soln)
-                soln['fact'] = fact #add name of fact to its arguemnts
-                state_facts.append(soln)
-        return state_facts
+                soln['action'] = action #add name of allowed action to its arguemnts
+                allActions.append(soln)
+        return allActions
+
+    def getAllObservations(self):
+        observationList = []
+        for observable, arity in self.atomicObservables.items():
+            query_string = 'static_' + observable + '('
+            for x in range(arity):
+                query_string = query_string + 'X' + str(x) + ','
+            query_string = query_string[:-1]
+            query_string = query_string + ')'
+            for soln in self.prolog.query(query_string):
+                #print(soln)
+                soln['observable'] = observable #add name of allowed action to its arguemnts
+                observationList.append(soln)
+        return observationList
+
 
 
 

@@ -1,5 +1,8 @@
+
 class Instance:
-    def __init__(self): #trajectory_type: ('s-a-s', 'a-s', 's-a')
+    def __init__(self, agent_name): 
+        self.agent_name = agent_name
+
         self.observation = []
         self.action = []
         self.new_observation = []
@@ -49,4 +52,28 @@ class Instance:
                     'info': self.info[t]}
         else:
             print("Warning: time step out of bounds")
+
+
+
+class Norm:
+
+    #later extend to be able to use multiple agents
+    def __init__(self):
+        self.instances = {}
+        self.selectedInstances = {}
+
+    #get,set functions
+    def addInstance(self, agent_name, id, trajectory, unique = None):
+        if unique is not None:
+            if unique == 'endStateEqualTo':
+                toAdd = True
+                for traj_key, traj in self.instances.items():
+                    if traj.endStateEqualTo(trajectory) == True:
+                        toAdd = False
+                        break
+                if toAdd == True:
+                    self.instances[(agent_name, id)] = trajectory
+        else:
+            self.instances[(agent_name, id)] = trajectory
+    
 
