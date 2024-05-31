@@ -22,7 +22,7 @@ class DataSharing(gym.Env):
         self.agentRL = env_config['agentRL']
         self.simThr = 0.90
         
-        self.tau = 0.8
+        self.tau = 0.95
 
         if self.spaceType == 'encoded':
             self.handler = PrologHandler(self.name, self.pathToRules, self.pathToInitialState)
@@ -121,13 +121,17 @@ class DataSharing(gym.Env):
             data = action['X1']
             model = action['X2']
             newData = "newData" + user + str(self.nStep)
-            
-            if data == "govData" and model == "healthRiskModel":      
-                self.handler.addFact("performedInference(" + user + "," + data + "," + model+ ")")
-                self.handler.addFact("data(" + newData + ")")
+
+            self.handler.addFact("performedInference(" + user + "," + data + "," + model+ ")")
+            self.handler.addFact("data(" + newData + ")")
+            self.handler.addFact("private(" + newData + ")")
+
+            #all other cases excpet this one are not interesting for our illustration
+            if data == "govData" and model == "healthRiskModel":
                 self.handler.addFact("hasMatchingVars(" + newData + "," + data + ")")
                 self.handler.addFact("hasMatchingVars(" + data + "," + newData + ")")
                 self.handler.addFact('varNames(' + newData + ',["name", "age", "health"])')
+                
 
                 self.handler.addFact("hasMatchingVars(" + newData + "," + "healthRiskData" + ")")
                 self.handler.addFact("hasMatchingVars(" + "healthRiskData" + "," + newData + ")")
@@ -327,12 +331,12 @@ class DataSharing(gym.Env):
                 distScore = distScore/privateDataFrame.size
 
                 
-                if distScore >= 0.7:
-                    print(distScore)
-                    print(privateDataFrame)
-                    print(testDataFrame)
+                #if distScore >= 0.7:
+                #    print(distScore)
+                #    print(privateDataFrame)
+                #    print(testDataFrame)
                 
-                print("\n")
+                #print("\n")
 
         return distScore
     
