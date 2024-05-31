@@ -1,5 +1,5 @@
 :- dynamic terminated/1, user/1, auditor/1.
-:- dynamic data/1, model/1, private/1, hasProtectedAttributes/1, isEmpty/1, hasMatchingVars/2. 
+:- dynamic data/1, model/1, private/1, hasProtectedAttributes/1, hasMatchingVars/2, varNames/2, nameLink/2. 
 :- dynamic hasAccess/2, performedInference/3.
 
 %
@@ -63,7 +63,7 @@ hasCredit(X,A) :- object(A),hasAccessNumModel(X,N1), hasAccessNumData(X,N2), N1 
 
 %synactic constraints on actions
 static_nullAction(X) :- user(X).
-static_gainAccess(X,A) :- user(X), object(A), not(private(A)), not(isEmpty(A)).
+static_gainAccess(X,A) :- user(X), object(A), not(private(A)).
 static_infer(X,A,B) :- user(X), data(A), model(B), hasMatchingVars(A,B).
 
 
@@ -72,6 +72,7 @@ nullAction(X) :- static_nullAction(X).
 gainAccess(X,A) :- static_gainAccess(X,A), not(hasAccess(X,A)), hasCredit(X,A).
 infer(X,A,B) :- static_infer(X,A,B), hasAccess(X,A), hasAccess(X,B), not(performedInference(X,A,B)). 
 
+%add here later hasMatchingVars or performedInference so that there's no need to check most of the time until something happens
 terminate(X,A,B) :- user(X), not(terminated(X)), data(A), data(B), private(A), A \== B.
 
 

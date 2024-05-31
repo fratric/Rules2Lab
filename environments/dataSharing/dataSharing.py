@@ -8,6 +8,7 @@ from  gymnasium import spaces
 from gymnasium.spaces import Dict
 import string
 import numpy as np
+import numbers
 
 class DataSharing(gym.Env):
 #class DataSharing():
@@ -19,6 +20,7 @@ class DataSharing(gym.Env):
         self.pathToInitialState = env_config['pathToInitialState']
         self.spaceType = env_config['spaceType']
         self.agentRL = env_config['agentRL']
+        self.simThr = 0.90
         
         self.tau = 0.8
 
@@ -115,9 +117,66 @@ class DataSharing(gym.Env):
 
             reward = 10
         elif action_name == 'infer': #results in creatinon of a new data-instance
+            user = action['X0']
             data = action['X1']
             model = action['X2']
-            self.handler.addFact("performedInference(" + user + "," + data + "," + model+ ")")
+            newData = "newData" + user + str(self.nStep)
+            
+            if data == "govData" and model == "healthRiskModel":      
+                self.handler.addFact("performedInference(" + user + "," + data + "," + model+ ")")
+                self.handler.addFact("data(" + newData + ")")
+                self.handler.addFact("hasMatchingVars(" + newData + "," + data + ")")
+                self.handler.addFact("hasMatchingVars(" + data + "," + newData + ")")
+                self.handler.addFact('varNames(' + newData + ',["name", "age", "health"])')
+
+                self.handler.addFact("hasMatchingVars(" + newData + "," + "healthRiskData" + ")")
+                self.handler.addFact("hasMatchingVars(" + "healthRiskData" + "," + newData + ")")
+
+                #get data and do inference
+                newRowName = "inferredPatient"
+
+                nameLink_Data = self.handler.makeQuery('nameLink(' + data + ',Dataclass)')
+                nameLink_Data = nameLink_Data[0]['Dataclass']
+                dataFrame = self.handler.makeQuery(nameLink_Data + '(DataRow)')
+                dataFrame = [d['DataRow'] for d in dataFrame]
+
+                varNames_data = self.handler.makeQuery('varNames(' + data + ',VarNames)')
+                varNames_data = varNames_data[0]['VarNames']
+                varNames_data = [s.decode("utf-8") for s in varNames_data]
+
+                dataFrame = pd.DataFrame(dataFrame, columns = varNames_data)
+
+                for indexPrivate, row in dataFrame.iterrows():
+
+                    #prediction model
+                    predictedHeatlh = 'good' if row["age"] < 35 else 'bad'
+
+                    newrow = [row["name"], row["age"], predictedHeatlh]
+                    self.handler.addFact(newRowName + "(" + str(newrow) + ")")
+
+                self.handler.addFact("nameLink(" + newData + "," + newRowName + ")")
+                
+                
+
+            #varNames_data = self.handler.makeQuery('varNames(' + data + ',VarNames)')
+            #varNames_model = self.handler.makeQuery('varNames(' + model + ',VarNames)')
+            #varNames_data = varNames_data[0]['VarNames']
+            #varNames_model = varNames_model[0]['VarNames']
+
+            #union_variables = set(varNames_data).union(varNames_model)
+            #self.handler.addFact("varNames(" + newData + "," + union_variables + ")")
+
+            ##get data from data
+            #nameLink_Data = self.handler.makeQuery('nameLink(' + data + ',Dataclass)')
+            #nameLink_Data = nameLink_Data[0]['Dataclass']
+            #dataFrame = self.handler.makeQuery(nameLink_Data + '(DataRow)')
+
+            #make inference
+
+            #write data from extended dataframe
+
+
+
             reward = 500
         else:
             print("Warning: unknown action ", action_name)
@@ -134,19 +193,13 @@ class DataSharing(gym.Env):
 
     def _is_done(self, user):
         isBreach = False
-
-        for sol in self.handler.makeQuery('solution(' + user +',X1,X2)'):
-            isBreach = True
+        #for sol in self.handler.makeQuery('solution(' + user +',X1,X2)'):
+        #    isBreach = True
         
-        #running 
-        #for sol in self.handler.makeQuery("verifyPrivacy(X, Y, A, B)"):
-        #    officer = sol["X"]
-        #    user = sol["Y"]
-        #    data_private = sol["A"]
-        #    data = sol["B"]
-        #    if self.database.compare(data_private, data) > self.tau:
-        #        isBreach = True
-        #        break
+        toCompareList = self.handler.makeQuery("terminate(insurenceCompany,A,B)")
+        simScore = self.getSimilarityScore(toCompareList)
+        if simScore > self.simThr:
+            isBreach = True
         return isBreach
     
     def _truncate(self):
@@ -220,6 +273,68 @@ class DataSharing(gym.Env):
             if action in allowed:
                 mask_array[i] = 1
         return mask_array
+    
+    def similiarityScore(self, a,b):
+        s = 0
+        if type(a) == type(b):
+            #if isinstance(a, numbers.Number) and isinstance(b, numbers.Number):
+            #    s = 1/(1+abs(a-b))
+            #else:
+            #    s = 1 if a == b else 0
+            s = 1 if a == b else 0
+        return s
+
+    def getSimilarityScore(self, toCompareList):
+        distScore = 0.0
+        for pair in toCompareList:
+            privateData = pair['A']
+            testData = pair['B']
+
+            #get name link
+            nameLink_privateData = self.handler.makeQuery('nameLink(' + privateData + ',Dataclass)')
+            nameLink_testData = self.handler.makeQuery('nameLink(' + testData + ',Dataclass)')
+            if len(nameLink_privateData) == 1 and len(nameLink_testData) == 1:
+                nameLink_privateData = nameLink_privateData[0]['Dataclass']
+                nameLink_testData = nameLink_testData[0]['Dataclass']
+                varNames_private = self.handler.makeQuery('varNames(' + privateData + ',VarNames)')
+                varNames_test = self.handler.makeQuery('varNames(' + testData + ',VarNames)')
+                varNames_private = varNames_private[0]['VarNames']
+                varNames_test = varNames_test[0]['VarNames']    
+                privateDataFrame = self.handler.makeQuery(nameLink_privateData + '(DataRow)')
+                privateDataFrame = [d['DataRow'] for d in privateDataFrame]
+                testDataFrame = self.handler.makeQuery(nameLink_testData + '(DataRow)')
+                testDataFrame = [d['DataRow'] for d in testDataFrame]
+        
+                #link var names to var instances in pandas df
+                privateDataFrame = pd.DataFrame(privateDataFrame, columns = varNames_private)
+                testDataFrame = pd.DataFrame(testDataFrame, columns = varNames_test) 
+
+                #iterate over two dfs and check each row of private if is present in test at score it
+                common_variables = set(varNames_private).intersection(varNames_test)
+
+                #print(privateDataFrame.shape[0])
+
+                for indexPrivate, rowPrivate in privateDataFrame.iterrows():
+                    rowDistMax = 0.0
+                    for indexTest, rowTest in testDataFrame.iterrows():
+                        rowDist = 0.0
+                        for variable in common_variables:
+                            rowDist = rowDist + self.similiarityScore(rowTest[variable], rowPrivate[variable])
+                        if rowDistMax < rowDist:
+                            rowDistMax = rowDist
+                    #print(rowDistMax)
+                    distScore = distScore + rowDistMax
+                distScore = distScore/privateDataFrame.size
+
+                
+                if distScore >= 0.7:
+                    print(distScore)
+                    print(privateDataFrame)
+                    print(testDataFrame)
+                
+                print("\n")
+
+        return distScore
     
 
 from ray.rllib.models.tf.fcnet import FullyConnectedNetwork
