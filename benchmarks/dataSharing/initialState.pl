@@ -3,8 +3,14 @@ user(insurenceCompany).
 user(advertismentCompany).
 user(retailCompany).
 
-monitor(watchdog). %agant tasked with 
+enforcer(watchdog). %agant tasked with 
 
+
+%observable facts
+isObservable(insurenceCompany,hasAccess,2).
+
+isObservable(retailCompany,hasAccess,2).
+isObservable(advertismentCompany,hasAccess,2).
 
 
 data(govData). 
@@ -50,9 +56,9 @@ nameLink(healthRiskData, patient).
 private(healthRiskData).
 
 %variables
-hasProtectedAttributes(govData).
-hasProtectedAttributes(healthRiskData).
-hasProtectedAttributes(healthRiskModel).
+hasPrivateAttributes(govData).
+hasPrivateAttributes(healthRiskData).
+hasPrivateAttributes(healthRiskModel).
 
 hasMatchingVars(healthRiskData, healthRiskModel).
 hasMatchingVars(govData, healthRiskModel).

@@ -18,23 +18,19 @@ class DataSharing(gym.Env):
     def __init__(self, env_config) -> None:
         self.pathToRules = env_config['pathToRules']
         self.pathToInitialState = env_config['pathToInitialState']
-        self.spaceType = env_config['spaceType']
         self.agentRL = env_config['agentRL']
-        self.simThr = 0.90
+        self.tau = 0.90 
         
-        self.tau = 0.95
-
-        if self.spaceType == 'encoded':
+        if self.agentRL is not None:
             self.handler = PrologHandler(self.name, self.pathToRules, self.pathToInitialState)
             self.allActions = self.handler.getAllActions()
-            if self.agentRL is not None: #later check if agent a valid agent
-                tmp = []
-                for action in self.allActions:
-                    if action["X0"] == self.agentRL:
-                        tmp.append(action)
-                self.allActions = tmp.copy()
+            tmp = []
+            for action in self.allActions:
+                if action["X0"] == self.agentRL:
+                    tmp.append(action)
+            self.allActions = tmp.copy()
             self.action_space = spaces.Discrete(len(self.allActions))
-            self.allObservations = self.handler.getAllObservations()
+            self.allObservations = self.handler.getAllObservations(self.agentRL)
             self.allObservations = [obs for obs in self.allObservations if not (obs['observable'] == 'hasAccess' and obs['X0'] != 'insurenceCompany')]
             self.observation_space_size = len(self.allObservations)
             self.observation_space = spaces.Dict(
@@ -43,13 +39,10 @@ class DataSharing(gym.Env):
                     "observations": spaces.MultiBinary(self.observation_space_size),
                 }
             )
-        elif self.spaceType == 'symbolic':
-            self.action_space = spaces.Text(min_length = 1, max_length = 5000, charset = string.printable)
-            self.observation_space = spaces.Text(min_length = 1, max_length = 5000, charset = string.printable)
         else:
-            print("warning: unknown space type")
-            self.action_space = None
-            self.observation_space = None
+            self.action_space = spaces.Text(min_length = 1, max_length = 5000, charset = string.printable)
+            self.observation_space = spaces.Text(min_length = 1, max_length = 7000, charset = string.printable)
+
 
     
     def reset(self, seed=None, options=None):
@@ -60,107 +53,75 @@ class DataSharing(gym.Env):
             for fact in options:
                 self.handler.safeAddFact(fact)
 
-        dictObservation = self.handler.getObservation()
+        if self.agentRL is not None:
+            dictObservation = self.handler.getObservation(self.agentRL)
+        else:
+            dictObservation = self.handler.getState()
         observation = self._get_obs(dictObservation)
         info = self._get_info(dictObservation)
         return observation, info
     
-    def step_uni(self, action):
-        if not isinstance(action, dict):
-            action = self.allActions[action]
-
-        
-
-        formated_action = self.handler.print(action)[0]
-
-        res = self.handler.makeQuery('transition(' + formated_action + ',T, R)')
-        if len(res) > 1:
-            print("Warning: more than one transition mapping for", formated_action)
-        state_facts = res[0]['T']
-
-        for state_fact in state_facts:
-            if state_fact[0] == '+':
-                self.handler.addFact(state_fact[1:])
-            elif state_fact[0] == '-':
-                self.handler.removeFact(state_fact[1:])
-            else:
-                print("Warning: only add (+) or remove (-) operators are valid")
-
-        reward = res[0]['R']
-
-        self.nStep = self.nStep + 1
-
-        dictObservation = self.handler.getObservation()
-        observation = self._get_obs(dictObservation) 
-        info = self._get_info(dictObservation, action)       
-        terminated = self._is_done(user)
-        truncated = self._truncate()
-        return observation, reward, terminated, truncated, info
-
-
-
-
     def step(self, action):
-        
         if not isinstance(action, dict):
             action = self.allActions[action]
 
-        reward = 0
-        action_name = action['action']
         user = action['X0']
 
-        if action_name == "nullAction":
-            reward = 0
-        elif action_name == 'gainAccess':
-            data = action['X1']
-            self.handler.addFact("hasAccess(" + user + "," + data + ")")
+        transition = self.handler.getTransition(action)
+        if transition is not None:
+            state_facts = transition['T']
+            for state_fact in state_facts:
+                if self.handler.getOperator(state_fact) == '+':
+                    self.handler.addFact(state_fact[1:])
+                elif self.handler.getOperator(state_fact) == '-':
+                    self.handler.removeFact(state_fact[1:])
+            reward = transition['R']
+        else:
+            #here comes state transition if more processing is required
+            action_name = action['action']
+            
+            if action_name == 'infer':
+                reward = 500
+                data = action['X1']
+                model = action['X2']
+                newData = "newData" + user + str(self.nStep)
 
-            reward = 10
-        elif action_name == 'infer': #results in creatinon of a new data-instance
-            user = action['X0']
-            data = action['X1']
-            model = action['X2']
-            newData = "newData" + user + str(self.nStep)
+                self.handler.addFact("performedInference(" + user + "," + data + "," + model+ ")")
+                self.handler.addFact("data(" + newData + ")")
+                self.handler.addFact("private(" + newData + ")")
 
-            self.handler.addFact("performedInference(" + user + "," + data + "," + model+ ")")
-            self.handler.addFact("data(" + newData + ")")
-            self.handler.addFact("private(" + newData + ")")
-
-            #all other cases excpet this one are not interesting for our illustration
-            if data == "govData" and model == "healthRiskModel":
-                self.handler.addFact("hasMatchingVars(" + newData + "," + data + ")")
-                self.handler.addFact("hasMatchingVars(" + data + "," + newData + ")")
-                self.handler.addFact('varNames(' + newData + ',["name", "age", "health"])')
+                #all other cases excpet this one are not interesting for our illustration
+                if data == "govData" and model == "healthRiskModel":
+                    self.handler.addFact("hasMatchingVars(" + newData + "," + data + ")")
+                    self.handler.addFact("hasMatchingVars(" + data + "," + newData + ")")
+                    self.handler.addFact('varNames(' + newData + ',["name", "age", "health"])')
                 
 
-                self.handler.addFact("hasMatchingVars(" + newData + "," + "healthRiskData" + ")")
-                self.handler.addFact("hasMatchingVars(" + "healthRiskData" + "," + newData + ")")
+                    self.handler.addFact("hasMatchingVars(" + newData + "," + "healthRiskData" + ")")
+                    self.handler.addFact("hasMatchingVars(" + "healthRiskData" + "," + newData + ")")
 
-                #get data and do inference
-                newRowName = "inferredPatient"
+                    #get data and do inference
+                    newRowName = "inferredPatient"
 
-                nameLink_Data = self.handler.makeQuery('nameLink(' + data + ',Dataclass)')
-                nameLink_Data = nameLink_Data[0]['Dataclass']
-                dataFrame = self.handler.makeQuery(nameLink_Data + '(DataRow)')
-                dataFrame = [d['DataRow'] for d in dataFrame]
+                    nameLink_Data = self.handler.makeQuery('nameLink(' + data + ',Dataclass)')
+                    nameLink_Data = nameLink_Data[0]['Dataclass']
+                    dataFrame = self.handler.makeQuery(nameLink_Data + '(DataRow)')
+                    dataFrame = [d['DataRow'] for d in dataFrame]
 
-                varNames_data = self.handler.makeQuery('varNames(' + data + ',VarNames)')
-                varNames_data = varNames_data[0]['VarNames']
-                varNames_data = [s.decode("utf-8") for s in varNames_data]
+                    varNames_data = self.handler.makeQuery('varNames(' + data + ',VarNames)')
+                    varNames_data = varNames_data[0]['VarNames']
+                    varNames_data = [s.decode("utf-8") for s in varNames_data]
 
-                dataFrame = pd.DataFrame(dataFrame, columns = varNames_data)
+                    dataFrame = pd.DataFrame(dataFrame, columns = varNames_data)
 
-                for indexPrivate, row in dataFrame.iterrows():
+                    for indexPrivate, row in dataFrame.iterrows():
+                        #prediction model
+                        predictedHeatlh = 'good' if row["age"] < 35 else 'bad'
+                        newrow = [row["name"], row["age"], predictedHeatlh]
+                        self.handler.addFact(newRowName + "(" + str(newrow) + ")")
 
-                    #prediction model
-                    predictedHeatlh = 'good' if row["age"] < 35 else 'bad'
-
-                    newrow = [row["name"], row["age"], predictedHeatlh]
-                    self.handler.addFact(newRowName + "(" + str(newrow) + ")")
-
-                self.handler.addFact("nameLink(" + newData + "," + newRowName + ")")
-                
-                
+                    self.handler.addFact("nameLink(" + newData + "," + newRowName + ")")
+                    
 
             #varNames_data = self.handler.makeQuery('varNames(' + data + ',VarNames)')
             #varNames_model = self.handler.makeQuery('varNames(' + model + ',VarNames)')
@@ -179,15 +140,9 @@ class DataSharing(gym.Env):
 
             #write data from extended dataframe
 
-
-
-            reward = 500
-        else:
-            print("Warning: unknown action ", action_name)
-        
         self.nStep = self.nStep + 1
 
-        dictObservation = self.handler.getObservation()
+        dictObservation = self.handler.getObservation(user)
         observation = self._get_obs(dictObservation) 
         info = self._get_info(dictObservation, action)       
         terminated = self._is_done(user)
@@ -195,14 +150,13 @@ class DataSharing(gym.Env):
         return observation, reward, terminated, truncated, info
 
 
-    def _is_done(self, user):
+    def _is_done(self, agent):
         isBreach = False
-        #for sol in self.handler.makeQuery('solution(' + user +',X1,X2)'):
-        #    isBreach = True
-        
-        toCompareList = self.handler.makeQuery("terminate(insurenceCompany,A,B)")
+
+        #toCompareList = self.handler.makeQuery("terminate(insurenceCompany,A,B)")
+        toCompareList = self.handler.makeQuery("terminate("+agent+",A,B)")
         simScore = self.getSimilarityScore(toCompareList)
-        if simScore > self.simThr:
+        if simScore > self.tau:
             isBreach = True
         return isBreach
     
@@ -214,15 +168,13 @@ class DataSharing(gym.Env):
         return False
 
     def _get_obs(self, state):
-        if self.spaceType == 'encoded':
+        if self.agentRL is not None:
             return {
                 'action_mask': self.maskArray(),
                 'observations': self.encodeObservation(state)
                 }
-        elif self.spaceType == 'symbolic':
-            return self.handler.print(state)
         else:
-            print("Warning: unknown spaceType")
+            return self.handler.print(state)
     
     def _get_info(self, observation, action = None):
         state = self.handler.getState()
@@ -231,7 +183,7 @@ class DataSharing(gym.Env):
             tmp_dict["formatAction"] = self.handler.print(action)
         if action is not None and isinstance(action, int):
             tmp_dict["dictAction"] = action
-        if self.spaceType == 'encoded':
+        if self.agentRL is not None:
             tmp_dict["formatObesrvation"] = self.handler.print(observation)
         return tmp_dict
 

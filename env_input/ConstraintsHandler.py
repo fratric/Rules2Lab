@@ -19,13 +19,6 @@ class ConstraintsHandler(ABC):
     
 
 
-#translation:
-# facts have python form {'fact': fact_name, 'X0': 1st_argument, 'X1': 2nd_argument, ....}
-# actions have python form {'action': action_name, 'X0': 1st_argument, 'X1': 2nd_argument, ....}
-#build in fact:
-# isAction(X1, X2) states that X1 is action with X2 number of arguments
-# isObservable states that X1 is fact with X2 number of arguments
-
 #from pyswip import Prolog
 from env_input.isolatedProlog import IsolatedProlog
 
@@ -77,11 +70,16 @@ class PrologHandler(ConstraintsHandler):
         res = self.makeQuery(term)
         if len(res) == 0: #note that if query is true then makeQuery returns empty dict, thus len of result is one
             self.addFact(term)
+        else:
+            print("Warning: predicate ",term, " already present. Predicate will not be added, use update to change predicate")
 
     def safeRemoveFact(self, term):
         res = self.makeQuery(term)
         if len(res) == 1: #note that if query is true then makeQuery returns empty dict, thus len of result is one
             self.removeFact(term)
+        else:
+            print("Warning: predicate ",term, " not present. Predicate cannot be removed")
+
 
     def makeQuery(self, query_string):
         query_result = []
@@ -131,6 +129,12 @@ class PrologHandler(ConstraintsHandler):
             print("Warning: unknown <input> type in ConstraintHandler.print(<input>)")
         return output_list
     
+    def groundStaveVar(self, predicate, terms):
+        s = predicate
+        for key, value in terms.items():
+            s = s.replace(key,value)
+        return s
+
     def getAtomicActions(self):
         atomicActions = {}
         for soln in self.prolog.query('isAction(X1,X2)'):
@@ -139,8 +143,9 @@ class PrologHandler(ConstraintsHandler):
     
     def getAtomicObservables(self):
         atomicObservables = {}
-        for soln in self.prolog.query('isObservable(X1,X2)'):
-            atomicObservables[soln['X1']] = int(soln['X2'])
+        for soln in self.prolog.query('isObservable(X0,X1,X2)'):
+            atomicObservables[soln['X0']] = {}
+            atomicObservables[soln['X0']][soln['X1']] = int(soln['X2'])
         return atomicObservables
 
     def getAtomicStates(self):
@@ -178,12 +183,12 @@ class PrologHandler(ConstraintsHandler):
                 state_facts.append(soln)
         return state_facts
 
-    def getObservation(self):
+    def getObservation(self, agent):
         state_facts = []
-        for fact in self.atomicObservables:
+        for fact in self.atomicObservables[agent]:
             #print("atomic action: ", action)
             query_string = fact + '('
-            for x in range(self.atomicObservables[fact]):
+            for x in range(self.atomicObservables[agent][fact]):
                 query_string = query_string + 'X' + str(x) + ','
             query_string = query_string[:-1]
             query_string = query_string + ')'
@@ -223,9 +228,9 @@ class PrologHandler(ConstraintsHandler):
                 allActions.append(soln)
         return allActions
 
-    def getAllObservations(self):
+    def getAllObservations(self, agent):
         observationList = []
-        for observable, arity in self.atomicObservables.items():
+        for observable, arity in self.atomicObservables[agent].items():
             query_string = 'static_' + observable + '('
             for x in range(arity):
                 query_string = query_string + 'X' + str(x) + ','
@@ -236,7 +241,23 @@ class PrologHandler(ConstraintsHandler):
                 soln['observable'] = observable #add name of allowed action to its arguemnts
                 observationList.append(soln)
         return observationList
-
+    
+    def getTransition(self, action):
+        formated_action = self.print(action)[0]
+        res = self.makeQuery('transition(' + formated_action + ',T, R)')
+        if len(res) > 1:
+            print("Warning: more than one transition mapping for", formated_action)
+        if len(res) != 0:
+            return res[0]
+        else:
+            return None
+        
+    def getOperator(self, state_fact):
+        if state_fact[0] == '+' or state_fact[0] == '-':
+            return state_fact[0]
+        else:
+            print("Warning: unknow (or missing) state fact operator. No transition executed.")
+            return None
 
 
 
