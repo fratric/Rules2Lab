@@ -1,5 +1,3 @@
-#this file is here to implment fnctions for environment registration
-#not sure if it is really need, see https://github.com/microsoft/CyberBattleSim/blob/main/cyberbattle/__init__.py
 from gymnasium.envs.registration import register
 from gymnasium.envs.registration import registry
 
