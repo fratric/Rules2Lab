@@ -144,7 +144,8 @@ class PrologHandler(ConstraintsHandler):
     def getAtomicObservables(self):
         atomicObservables = {}
         for soln in self.prolog.query('isObservable(X0,X1,X2)'):
-            atomicObservables[soln['X0']] = {}
+            if soln['X0'] not in atomicObservables:
+                atomicObservables[soln['X0']] = {}
             atomicObservables[soln['X0']][soln['X1']] = int(soln['X2'])
         return atomicObservables
 

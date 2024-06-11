@@ -161,7 +161,7 @@ class DataSharing(gym.Env):
         return isBreach
     
     def _truncate(self):
-        if len(self.handler.getAllowedActions()) == 0:
+        if len(self.handler.getAllowedActions()) == 1:
             return True
         if self.nStep > 50:
             return True
