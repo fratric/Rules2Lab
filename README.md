@@ -28,25 +28,25 @@ To use the class constraintHandler.py, the **necessary requirement** is to insta
 In order to instantiate several Prolog object without interferance between objects, the [Isolated Prolog](https://github.com/mortacious/pyswip-notebook/blob/master/pyswip_notebook/prolog_notebook.py) class is included in this repository.
  
 Development steps to create a new multi-agent based enviornmnet are described in Section 3 of the paper *Rules2Lab: from Prolog Knowledge-Base, to Learning Agents, to Norm Engineering*. To summarize these steps:
-1. Define agent types, state variables, observable states, action constraints, and (optionally) state transitions, terminating states, or reward functions, in a Prolog file (see [benchmarks/dataSharing/rules.pl](https://github.com/fratric/Rules2Lab/blob/master/benchmarks/dataSharing/rules.pl)).
-2. Define the initial state of the environment in a Prolog file (see [benchmarks/dataSharing/initialState.pl](https://github.com/fratric/Rules2Lab/blob/master/benchmarks/dataSharing/initialState.pl)).
-3. Implement a reset function in Python (see [environments/dataSharing/dataSharing.py](https://github.com/fratric/Rules2Lab/blob/master/environments/dataSharing/dataSharing.py) ), resetting the environment into the initial state.
-4. Implement a step function in Python, and a state terminating method (see environments/dataSharing/dataSharing.py).
-5. (Optionally) to be consistent with the Gymnasium standard, implemnet _is_done, _truncate, _get_obs, and _get_info, methods and make your environment a sub-class of the gymnasium class.
+1. Define agent types, state variables, observable states, action constraints, and (optionally) state transitions, terminating states, or reward functions, in a Prolog file (see [benchmarks/dataSharing/rules.pl](https://github.com/fratric/Rules2Lab/blob/master/benchmarks/dataSharing/rules.pl) for example).
+2. Define the initial state of the environment in a Prolog file (see [benchmarks/dataSharing/initialState.pl](https://github.com/fratric/Rules2Lab/blob/master/benchmarks/dataSharing/initialState.pl) for example).
+3. Implement a reset function in Python (see [environments/dataSharing/dataSharing.py](https://github.com/fratric/Rules2Lab/blob/master/environments/dataSharing/dataSharing.py) for example), resetting the environment into the initial state.
+4. Implement a step function in Python, and a state terminating method (see [environments/dataSharing/dataSharing.py](https://github.com/fratric/Rules2Lab/blob/master/environments/dataSharing/dataSharing.py) for example).
+5. (Optionally) to be consistent with the Gymnasium standard, implemnet _is_done, _truncate, _get_obs, and _get_info, methods and make your environment a sub-class of the gymnasium class (see [environments/dataSharing/dataSharing.py](https://github.com/fratric/Rules2Lab/blob/master/environments/dataSharing/dataSharing.py) for example).
 
 Additionally, usage of Python language allows for utilization of commonly used data-processing and visualization packages. 
 This requires only instalation of few Python packages, e.g., networkx to visualize the knowledge base as a knowledge graph.
-Since the ConstraintsHandler class can be queried for allowed actions, developed environment can be using a simple zero-intelligence random agent (see randomAllowedAction method in environments/dataSharing/dataSharing.py)
+Since the ConstraintsHandler class can be queried for allowed actions, developed environment can be using a simple zero-intelligence random agent (see randomAllowedAction method in (see [environments/dataSharing/dataSharing.py](https://github.com/fratric/Rules2Lab/blob/master/environments/dataSharing/dataSharing.py) for example))
 
 ### Implementing RLlib agents
 
-If the prolog-based environmnet is compatible with Gymnasium standard (see step 5 in previous subsection), then it is possible to utilize RLlib library. 
-This requires installation of several requirements (see Ray and RLlip website for more info). 
+If the prolog-based environmnet is compatible with Gymnasium standard (see step 5 in previous subsection), then it is possible to utilize deep reinforcement learning [RLlib library](https://docs.ray.io/en/latest/rllib). 
+This requires installation of several requirements (see [Ray](https://docs.ray.io/en/latest/ray-overview/installation.html) website for installation guide). 
 
 ### Normative analysis of the simulation output
 
 Definition of action constraints and other related concepts in Prolog allows for flexible modification of normative policies in the environment on run-time.
-In the folder norm_analysis, you may find classes helping to perform inductive logic programming (ILP) based on simulation output of agents' behaviors. 
-To perform ILP, we use the Popper package.
-For the full example, see benchmarks/dataSharing/experiment.ipynb. Note that the latest version of Popper is rather difficult to install using the Conda environment. 
+In the folder [norm_analysis](https://github.com/fratric/Rules2Lab/blob/master/norm_analysis), you may find classes helping to perform inductive logic programming (ILP) based on simulation output of agents' behaviors. 
+To perform ILP, we use the [Popper](https://github.com/logic-and-learning-lab/Popper) package.
+For the full example, see see [benchmarks/dataSharing/experiment.ipynb](https://github.com/fratric/Rules2Lab/blob/master/benchmarks/dataSharing/experiment.ipynb) for example. Note that the latest version of Popper is rather difficult to use with the Conda environment. 
 For this reason, we redundantly include older version of Popper into this repository.
