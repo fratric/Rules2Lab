@@ -188,7 +188,7 @@ class DataSharing(gym.Env):
         return tmp_dict
 
 
-    def randomAllowedAction(self, agent = None): #adjust also for encoded space type
+    def randomAllowedAction(self, agent = None):
         allowedActs = self.handler.getAllowedActions()
         if agent is not None:
             tmp = []

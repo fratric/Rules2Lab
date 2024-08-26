@@ -1,5 +1,8 @@
-gymnasium==0.28.1
-matplotlib==3.8.0
-networkx==3.1
-pandas==2.1.4
-git+https://github.com/yuce/pyswip@master#egg=pyswip
+clingo==5.7.1
+gymnasium==0.29.1
+numpy==1.13.3
+pandas==1.1.5
+pysat==3.2.0
+pyswip==0.2.10
+ray==2.34.0
+setuptools==39.0.1

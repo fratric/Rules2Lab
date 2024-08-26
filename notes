@@ -1,6 +1,0 @@
-to select conda interpreter: Ctrl+Shift+P, then type python: interpreter and select 
-
-pip install -r requirements.txt
-
-pip install -e /home/peter/Desktop/postdoc/ReCivilTest
-pip uninstall environments

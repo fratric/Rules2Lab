@@ -8,10 +8,6 @@ class ConstraintsHandler(ABC):
         self.env_name =  'ConstraintsHandler_' + env_name
         self.pathToFile = pathToFile
         self.pathToInitialState = pathToInitialState
-
-    @abstractmethod
-    def verifyElementaryActions(self):
-        raise NotImplementedError("SubClass must override verifyElementaryActions method")
     
     @abstractmethod
     def getAllowedActions(self):
