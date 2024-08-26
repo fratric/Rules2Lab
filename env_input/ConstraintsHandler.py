@@ -1,6 +1,4 @@
-#from env_input import NLPhandler
 from abc import ABC, abstractmethod
-#import pandas as pd
 
 class ConstraintsHandler(ABC):
 
@@ -11,7 +9,7 @@ class ConstraintsHandler(ABC):
     
     @abstractmethod
     def getAllowedActions(self):
-        raise NotImplementedError("SbuClass must override getAllowedActions method")
+        raise NotImplementedError("SubClass must override getAllowedActions method")
     
 
 
@@ -37,10 +35,6 @@ class PrologHandler(ConstraintsHandler):
         #print(self.atomicActions)
         #print(self.atomicObservables)
 
-    #this method checks if all atomic actions in the environment exist in the file. Note that prolog alone cannot know what is action and what is fact
-    def verifyElementaryActions(self):
-        #load atomic action in the prolog file and then when doing step you can check the imput action (action_name) against loaded list of actions
-        pass
 
     def loadRules(self, pathToFile):
         if isinstance(pathToFile, str):
