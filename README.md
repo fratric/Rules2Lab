@@ -40,7 +40,7 @@ Since the ConstraintsHandler class can be queried for allowed actions, developed
 
 ### Implementing RLlib agents
 
-If the prolog-based environmnet is compatible with Gymnasium standard (see step 5 in previous subsection), then it is possible to utilize deep reinforcement learning [RLlib library](https://docs.ray.io/en/latest/rllib). 
+Since action constraints are defined in Prolog, it is easy to get allowed actions for a given state. Moreover, by convenietly structuring the Prolog code, action encoding can be easily obtained (see Section 3 of the main paper). Such encodings are usefull for deep reinforcement learning. If the prolog-based environmnet is compatible with Gymnasium standard (see step 5 in previous subsection), then it is possible to utilize deep reinforcement learning [RLlib library](https://docs.ray.io/en/latest/rllib). 
 This requires installation of several requirements (see [Ray](https://docs.ray.io/en/latest/ray-overview/installation.html) website for installation guide). 
 
 ### Normative analysis of the simulation output
