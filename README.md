@@ -1,6 +1,6 @@
 # Rules2Lab
 
-This repo is related to paper *Rules2Lab: from Prolog Knowledge-Base, to Learning Agents, to Norm Engineering* publised at [The 21st European Conference on Multi-Agent Systems](https://euramas.github.io/eumas2024/). 
+This repo is related to paper *Rules2Lab: from Prolog Knowledge-Base, to Learning Agents, to Norm Engineering* presented at [The 21st European Conference on Multi-Agent Systems](https://euramas.github.io/eumas2024/). 
 Briefly, this paper explains how to transfrom a normative system defined in a (symbolic) logic-based programming language (e.g. Prolog) into an executable simulation environment where state transitions and (sub-symbolic) operations are performed by a procedural programming lanugage (e.g. Python).
 
 ## Overview
